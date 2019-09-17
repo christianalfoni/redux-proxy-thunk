@@ -23,7 +23,8 @@ function createTrackMutationsProxy(
   dispatch,
   getState,
   path,
-  objectCache: WeakMap<object, object>
+  objectCache: WeakMap<object, object>,
+  actionName = ''
 ) {
   return new Proxy(Array.isArray(getTarget(path, getState())) ? [] : {}, {
     getOwnPropertyDescriptor(_, prop) {
@@ -57,8 +58,8 @@ function createTrackMutationsProxy(
         return (...args) => {
           if (arrayMutationMethods.has(prop.toString())) {
             dispatch({
-              type: 'mutation',
-              path,
+              type: 'mutation:' + name,
+              path: path.join('.'),
               mutation: prop.toString().toUpperCase(),
               args,
             })
@@ -87,7 +88,8 @@ function createTrackMutationsProxy(
                       dispatch,
                       getState,
                       path,
-                      objectCache
+                      objectCache,
+                      name
                     )
                   )
                   .get(newTarget)
@@ -101,7 +103,13 @@ function createTrackMutationsProxy(
           }
 
           return target[prop].call(
-            createTrackMutationsProxy(dispatch, getState, path, objectCache),
+            createTrackMutationsProxy(
+              dispatch,
+              getState,
+              path,
+              objectCache,
+              name
+            ),
             ...args
           )
         }
@@ -117,7 +125,8 @@ function createTrackMutationsProxy(
                 dispatch,
                 getState,
                 newPath,
-                objectCache
+                objectCache,
+                name
               )
             )
             .get(target[prop])
@@ -128,8 +137,8 @@ function createTrackMutationsProxy(
     },
     set(_, prop, value) {
       dispatch({
-        type: 'mutation',
-        path: path.concat(prop),
+        type: 'mutation:' + name,
+        path: path.concat(prop).join('.'),
         mutation: 'SET',
         value,
       })
@@ -137,8 +146,8 @@ function createTrackMutationsProxy(
     },
     deleteProperty(_, prop) {
       dispatch({
-        type: 'mutation',
-        path: path.concat(prop),
+        type: 'mutation:' + name,
+        path: path.concat(prop).join('.'),
         mutation: 'DELETE',
       })
       return true
@@ -156,103 +165,56 @@ export function createReducer() {
   const initialState = arguments.length > 1 ? arguments[1] : arguments[0]
 
   return (state, action) => {
-    if (
-      action.type === 'mutation' &&
-      (!namespace || action.path[0] === namespace)
-    ) {
+    if (action.type.startsWith('mutation:')) {
+      const path = action.path.split('.')
+
+      if (namespace && path[0] !== namespace) {
+        return state
+      }
+
       switch (action.mutation) {
         case 'SET':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              target[key] = action.value
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            target[key] = action.value
+          })
         case 'DELETE':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              delete target[key]
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            delete target[key]
+          })
         case 'PUSH':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              target[key] = target[key].concat(...action.args)
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            target[key] = target[key].concat(...action.args)
+          })
         case 'SHIFT':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              target[key] = target[key].slice(1)
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            target[key] = target[key].slice(1)
+          })
         case 'POP':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              target[key] = target[key].slice(0, target[key].length - 1)
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            target[key] = target[key].slice(0, target[key].length - 1)
+          })
         case 'UNSHIFT':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              target[key] = [...action.args, ...target[key]]
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            target[key] = [...action.args, ...target[key]]
+          })
         case 'SPLICE':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              const newArray = target[key].slice()
-              newArray.splice(...action.args)
-              target[key] = newArray
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            const newArray = target[key].slice()
+            newArray.splice(...action.args)
+            target[key] = newArray
+          })
         case 'REVERSE':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              target[key] = target[key].slice().reverse()
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            target[key] = target[key].slice().reverse()
+          })
         case 'SORT':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              target[key] = target[key].slice().sort(...action.args)
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            target[key] = target[key].slice().sort(...action.args)
+          })
         case 'COPYWITHIN':
-          return performMutation(
-            state,
-            namespace,
-            action.path,
-            (target, key) => {
-              target[key] = target[key].slice().copyWithin(...action.args)
-            }
-          )
+          return performMutation(state, namespace, path, (target, key) => {
+            target[key] = target[key].slice().copyWithin(...action.args)
+          })
         default:
           return state
       }
@@ -266,18 +228,19 @@ export function createAction<P extends any, S extends State>(
   action: P extends void
     ? (context: { state: S }) => any
     : (context: { state: S }, payload: P) => any
-): (payload: P) => Action<P>
+): P extends void ? () => Action<P> : (payload: P) => Action<P>
 export function createAction<P extends any, S extends State, E extends object>(
   action: P extends void
     ? (context: { state: S; effects: E }) => any
     : (context: { state: S; effects: E }, payload: P) => any
-): (payload: P) => Action<P> {
+): P extends void ? () => Action<P> : (payload: P) => Action<P> {
   return ((payload: P) => (dispatch, getState, effects) => {
     const proxy: S = createTrackMutationsProxy(
       dispatch,
       getState,
       [],
-      new WeakMap()
+      new WeakMap(),
+      action.name
     )
 
     return action(
