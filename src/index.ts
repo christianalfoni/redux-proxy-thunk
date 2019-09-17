@@ -56,12 +56,27 @@ export function create<
     return new Proxy(
       {},
       {
+        getOwnPropertyDescriptor(_, prop) {
+          const target = getTarget(path, getState())
+
+          return Reflect.getOwnPropertyDescriptor(target, prop)
+        },
+        ownKeys() {
+          const target = getTarget(path, getState())
+
+          return Reflect.ownKeys(target)
+        },
+        has(_, prop) {
+          const target = getTarget(path, getState())
+
+          return Reflect.has(target, prop)
+        },
         get(_, prop) {
           if (typeof prop === 'symbol') {
             return prop
           }
 
-          const target = path.reduce((aggr, key) => aggr[key], getState())
+          const target = getTarget(path, getState())
           const newPath = path.concat(prop)
 
           if (typeof target[prop] === 'function') {
