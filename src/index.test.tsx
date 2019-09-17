@@ -1,5 +1,6 @@
-import { create, IS_PROXY } from './'
+import { createReducer, createAction } from './'
 import { createStore, applyMiddleware, combineReducers } from 'redux'
+import thunk from 'redux-thunk'
 import { Provider, useSelector } from 'react-redux'
 import * as React from 'react'
 import * as renderer from 'react-test-renderer'
@@ -8,126 +9,133 @@ const waitForUseEffect = () => new Promise((resolve) => setTimeout(resolve))
 
 describe('React', () => {
   test('should initialize with reducers', () => {
-    const { reducers } = create({
-      state: {
-        foo: {
-          bar: 'baz',
-        },
-      },
+    const reducer = createReducer({
+      foo: 'bar',
     })
-    const store = createStore(combineReducers(reducers))
+    const store = createStore(reducer)
 
     expect(store.getState()).toEqual({
-      foo: {
+      foo: 'bar',
+    })
+  })
+  test('should initialize namespaced reducers', () => {
+    const app = createReducer('app', {
+      foo: 'bar',
+    })
+    const other = createReducer('other', {
+      bar: 'baz',
+    })
+    const store = createStore(
+      combineReducers({
+        app,
+        other,
+      })
+    )
+
+    expect(store.getState()).toEqual({
+      app: {
+        foo: 'bar',
+      },
+      other: {
         bar: 'baz',
       },
     })
   })
   test('should dispatch mutations to reducers', () => {
-    const { reducers, actions, middleware } = create({
-      state: {
-        foo: {
-          bar: 'baz',
-        },
-      },
-      actions: {
-        test({ state }) {
-          state.foo.bar = 'baz2'
-        },
-      },
-    })
-    const store = createStore(
-      combineReducers(reducers),
-      applyMiddleware(middleware)
-    )
+    type State = {
+      foo: string
+    }
 
-    store.dispatch(actions.test())
+    const reducer = createReducer<State>({
+      foo: 'bar',
+    })
+    const test = createAction<void, State>(({ state }) => {
+      state.foo = 'bar2'
+    })
+    const store = createStore(reducer, applyMiddleware(thunk))
+
+    store.dispatch(test())
     expect(store.getState()).toEqual({
-      foo: {
-        bar: 'baz2',
-      },
+      foo: 'bar2',
     })
   })
+
   test('should freeze state', () => {
-    const { reducers, actions, middleware } = create({
-      state: {
-        foo: {
-          bar: [
-            {
-              mip: 'mop',
-            },
-          ],
-        },
-      },
-      actions: {
-        test({ state }) {
-          state.foo.bar[0].mip = 'mop2'
-        },
+    type State = {
+      foo: {
+        bar: Array<{ mip: string }>
+      }
+    }
+    const reducer = createReducer<State>({
+      foo: {
+        bar: [
+          {
+            mip: 'mop',
+          },
+        ],
       },
     })
-    const store = createStore(
-      combineReducers(reducers),
-      applyMiddleware(middleware)
-    )
+    const test = createAction<void, State>(({ state }) => {
+      state.foo.bar[0].mip = 'mop2'
+    })
+    const store = createStore(reducer, applyMiddleware(thunk))
 
-    store.dispatch(actions.test())
+    store.dispatch(test())
 
-    const state = store.getState()
+    const state = store.getState() as State
 
     expect(Object.isFrozen(state))
     expect(Object.isFrozen(state.foo))
-    expect(Object.isFrozen(state.bar))
+    expect(Object.isFrozen(state.foo.bar))
     // @ts-ignore
     expect(Object.isFrozen(state.foo.bar[0]))
   })
+
   test('should alway see latest state', () => {
-    const { reducers, actions, middleware } = create({
-      state: {
-        foo: {
-          bar: 'baz',
-        },
-      },
-      actions: {
-        test({ state }) {
-          const foo = state.foo
-          foo.bar += '!'
-          foo.bar += '!'
-        },
+    type State = {
+      foo: {
+        bar: string
+      }
+    }
+    const reducer = createReducer<State>({
+      foo: {
+        bar: 'baz',
       },
     })
-    const store = createStore(
-      combineReducers(reducers),
-      applyMiddleware(middleware)
-    )
+    const test = createAction<void, State>(({ state }) => {
+      const foo = state.foo
+      foo.bar += '!'
+      foo.bar += '!'
+    })
+    const store = createStore(reducer, applyMiddleware(thunk))
 
-    store.dispatch(actions.test())
+    store.dispatch(test())
     expect(store.getState()).toEqual({
       foo: {
         bar: 'baz!!',
       },
     })
   })
+
   test('should be able to mutate with iterators', () => {
-    const { reducers, actions, middleware } = create({
-      state: {
-        foo: {
-          bar: [{ title: 'foo' }],
-        },
-      },
-      actions: {
-        test({ state }) {
-          state.foo.bar.forEach((item) => {
-            item.title += '!!!'
-          })
-        },
+    type State = {
+      foo: {
+        bar: Array<{ title: string }>
+      }
+    }
+    const reducer = createReducer<State>({
+      foo: {
+        bar: [{ title: 'foo' }],
       },
     })
-    const store = createStore(
-      combineReducers(reducers),
-      applyMiddleware(middleware)
-    )
+    const test = createAction<void, State>(({ state }) => {
+      state.foo.bar.forEach((item) => {
+        item.title += '!!!'
+      })
+    })
+    const store = createStore(reducer, applyMiddleware(thunk))
 
-    store.dispatch(actions.test())
+    store.dispatch(test())
     expect(store.getState()).toEqual({
       foo: {
         bar: [
@@ -138,28 +146,27 @@ describe('React', () => {
       },
     })
   })
+
   test('should be able to replace objects', () => {
-    const { reducers, actions, middleware } = create({
-      state: {
-        foo: {
-          bar: [
-            { title: 'foo', isAwesome: true },
-            { title: 'bar', isAwesome: false },
-          ],
-        },
-      },
-      actions: {
-        test({ state }) {
-          state.foo.bar = state.foo.bar.filter((item) => item.isAwesome)
-        },
+    type State = {
+      foo: {
+        bar: Array<{ title: string; isAwesome: boolean }>
+      }
+    }
+    const reducer = createReducer<State>({
+      foo: {
+        bar: [
+          { title: 'foo', isAwesome: true },
+          { title: 'bar', isAwesome: false },
+        ],
       },
     })
-    const store = createStore(
-      combineReducers(reducers),
-      applyMiddleware(middleware)
-    )
+    const test = createAction<void, State>(({ state }) => {
+      state.foo.bar = state.foo.bar.filter((item) => item.isAwesome)
+    })
+    const store = createStore(reducer, applyMiddleware(thunk))
 
-    store.dispatch(actions.test())
+    store.dispatch(test())
 
     expect(store.getState()).toEqual({
       foo: {
@@ -172,28 +179,27 @@ describe('React', () => {
       },
     })
   })
+
   test('should handle async changes', async () => {
-    const { reducers, actions, middleware } = create({
-      state: {
-        foo: {
-          bar: 'baz',
-        },
-      },
-      actions: {
-        test: async ({ state }) => {
-          const foo = state.foo
-          foo.bar += '!'
-          await Promise.resolve()
-          foo.bar += '!'
-        },
+    type State = {
+      foo: {
+        bar: string
+      }
+    }
+    const reducer = createReducer<State>({
+      foo: {
+        bar: 'baz',
       },
     })
-    const store = createStore(
-      combineReducers(reducers),
-      applyMiddleware(middleware)
-    )
+    const test = createAction<void, State>(async ({ state }) => {
+      const foo = state.foo
+      foo.bar += '!'
+      await Promise.resolve()
+      foo.bar += '!'
+    })
+    const store = createStore(reducer, applyMiddleware(thunk))
 
-    store.dispatch(actions.test())
+    store.dispatch(test())
 
     await Promise.resolve()
 
@@ -206,214 +212,199 @@ describe('React', () => {
   describe('MUTATION RESULTS', () => {
     test('SET should return value set', () => {
       expect.assertions(1)
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: 'baz',
-          },
-        },
-        actions: {
-          test({ state }) {
-            expect((state.foo.bar = 'baz2')).toBe('baz2')
-          },
+      type State = {
+        foo: {
+          bar: string
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: 'baz',
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        expect((state.foo.bar = 'baz2')).toBe('baz2')
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
     })
     test('DELETE should return boolean', () => {
       expect.assertions(1)
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: 'baz',
-          },
-        },
-        actions: {
-          test({ state }) {
-            expect(delete state.foo.bar).toBe(true)
-          },
+      type State = {
+        foo: {
+          bar: string
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: 'baz',
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        expect(delete state.foo.bar).toBe(true)
+      })
+      const store = createStore(reducer, applyMiddleware(thunk))
 
-      store.dispatch(actions.test())
+      store.dispatch(test())
     })
     test('PUSH should return new length', () => {
       expect.assertions(1)
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: [] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            expect(state.foo.bar.push('foo')).toBe(1)
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: [],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        expect(state.foo.bar.push('foo')).toBe(1)
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
     })
     test('SHIFT should return first value', () => {
       expect.assertions(1)
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            expect(state.foo.bar.shift()).toBe('foo')
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo'],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        expect(state.foo.bar.shift()).toBe('foo')
+      })
+      const store = createStore(reducer, applyMiddleware(thunk))
 
-      store.dispatch(actions.test())
+      store.dispatch(test())
     })
     test('POP should return last value', () => {
       expect.assertions(1)
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            expect(state.foo.bar.pop()).toBe('bar')
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo', 'bar'] as string[],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        expect(state.foo.bar.pop()).toBe('bar')
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
     })
     test('UNSHIFT should return new length', () => {
       expect.assertions(1)
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            expect(state.foo.bar.unshift('bar')).toBe(2)
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo'],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        expect(state.foo.bar.unshift('bar')).toBe(2)
+      })
+      const store = createStore(reducer, applyMiddleware(thunk))
 
-      store.dispatch(actions.test())
+      store.dispatch(test())
     })
     test('SPLICE should return removed elements', () => {
       expect.assertions(1)
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar', 'baz'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            expect(state.foo.bar.splice(1, 1)).toEqual(['bar'])
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo', 'bar', 'baz'],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        expect(state.foo.bar.splice(1, 1)).toEqual(['bar'])
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
     })
     test('REVERSE should return the reversed target', () => {
       expect.assertions(1)
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar', 'baz'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            expect(state.foo.bar.reverse()).toBe(state.foo.bar)
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo', 'bar', 'baz'],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        expect(state.foo.bar.reverse()).toBe(state.foo.bar)
+      })
+      const store = createStore(reducer, applyMiddleware(thunk))
 
-      store.dispatch(actions.test())
+      store.dispatch(test())
     })
     test('SORT should return the new sorted target', () => {
       expect.assertions(1)
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar', 'baz'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            expect(state.foo.bar.sort()).toBe(state.foo.bar)
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer({
+        foo: {
+          bar: ['foo', 'bar', 'baz'],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        expect(state.foo.bar.sort()).toBe(state.foo.bar)
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
     })
   })
   describe('MUTATIONS', () => {
     test('SET', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: 'baz',
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar = 'baz2'
-          },
+      type State = {
+        foo: {
+          bar: string
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: 'baz',
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar = 'baz2'
+      })
+      const store = createStore(reducer, applyMiddleware(thunk))
 
-      store.dispatch(actions.test())
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {
           bar: 'baz2',
@@ -421,47 +412,46 @@ describe('React', () => {
       })
     })
     test('DELETE', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: 'baz',
-          },
-        },
-        actions: {
-          test({ state }) {
-            delete state.foo.bar
-          },
+      type State = {
+        foo: {
+          bar: string
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: 'baz',
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
 
-      store.dispatch(actions.test())
+      const test = createAction<void, State>(({ state }) => {
+        delete state.foo.bar
+      })
+
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {},
       })
     })
     test('PUSH', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: [] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar.push('foo')
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: [],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar.push('foo')
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {
           bar: ['foo'],
@@ -469,24 +459,23 @@ describe('React', () => {
       })
     })
     test('SHIFT', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar.shift()
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo', 'bar'],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar.shift()
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {
           bar: ['bar'],
@@ -494,24 +483,23 @@ describe('React', () => {
       })
     })
     test('POP', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar.pop()
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo', 'bar'] as string[],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar.pop()
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {
           bar: ['foo'],
@@ -519,24 +507,22 @@ describe('React', () => {
       })
     })
     test('UNSHIFT', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar.unshift('bar')
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo'],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar.unshift('bar')
+      })
+      const store = createStore(reducer, applyMiddleware(thunk))
 
-      store.dispatch(actions.test())
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {
           bar: ['bar', 'foo'],
@@ -544,24 +530,22 @@ describe('React', () => {
       })
     })
     test('SPLICE', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar.splice(1, 1, 'baz')
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo', 'bar'] as string[],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar.splice(1, 1, 'baz')
+      })
+      const store = createStore(reducer, applyMiddleware(thunk))
 
-      store.dispatch(actions.test())
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {
           bar: ['foo', 'baz'],
@@ -569,24 +553,23 @@ describe('React', () => {
       })
     })
     test('REVERSE', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar.splice(1, 1, 'baz')
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo', 'bar'] as string[],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar.splice(1, 1, 'baz')
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {
           bar: ['foo', 'baz'],
@@ -594,24 +577,23 @@ describe('React', () => {
       })
     })
     test('SORT', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar.sort()
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo', 'bar'] as string[],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar.sort()
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {
           bar: ['bar', 'foo'],
@@ -619,24 +601,23 @@ describe('React', () => {
       })
     })
     test('COPYWITHIN', () => {
-      const { reducers, actions, middleware } = create({
-        state: {
-          foo: {
-            bar: ['foo', 'bar'] as string[],
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar.copyWithin(0, 1)
-          },
+      type State = {
+        foo: {
+          bar: string[]
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: ['foo', 'bar'] as string[],
         },
       })
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar.copyWithin(0, 1)
+      })
 
-      store.dispatch(actions.test())
+      const store = createStore(reducer, applyMiddleware(thunk))
+
+      store.dispatch(test())
       expect(store.getState()).toEqual({
         foo: {
           bar: ['bar', 'bar'],
@@ -646,18 +627,18 @@ describe('React', () => {
   })
   describe('COMPONENTS', () => {
     test('should expose state', () => {
-      const { reducers, middleware } = create({
-        state: {
-          foo: {
-            bar: 'baz',
-          },
+      type State = {
+        foo: {
+          bar: string
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: 'baz',
         },
       })
 
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const store = createStore(reducer)
       const FooComponent: React.FunctionComponent = () => {
         const foo = useSelector((state) => state.foo)
 
@@ -672,24 +653,23 @@ describe('React', () => {
 
       expect(tree.toJSON()).toMatchSnapshot()
     })
+
     test('should render when updating state', () => {
-      const { actions, reducers, middleware } = create({
-        state: {
-          foo: {
-            bar: 'baz',
-          },
-        },
-        actions: {
-          test({ state }) {
-            state.foo.bar = 'baz2'
-          },
+      type State = {
+        foo: {
+          bar: string
+        }
+      }
+      const reducer = createReducer<State>({
+        foo: {
+          bar: 'baz',
         },
       })
+      const test = createAction<void, State>(({ state }) => {
+        state.foo.bar = 'baz2'
+      })
 
-      const store = createStore(
-        combineReducers(reducers),
-        applyMiddleware(middleware)
-      )
+      const store = createStore(reducer, applyMiddleware(thunk))
       const FooComponent: React.FunctionComponent = () => {
         const foo = useSelector((state) => state.foo)
 
@@ -705,7 +685,7 @@ describe('React', () => {
       expect(tree.toJSON()).toMatchSnapshot()
 
       renderer.act(() => {
-        store.dispatch(actions.test())
+        store.dispatch(test())
       })
 
       expect(tree.toJSON()).toMatchSnapshot()
