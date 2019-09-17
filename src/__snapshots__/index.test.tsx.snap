@@ -1,0 +1,19 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`React COMPONENTS should expose state 1`] = `
+<h1>
+  baz
+</h1>
+`;
+
+exports[`React COMPONENTS should render when updating state 1`] = `
+<h1>
+  baz
+</h1>
+`;
+
+exports[`React COMPONENTS should render when updating state 2`] = `
+<h1>
+  baz2
+</h1>
+`;
