@@ -138,6 +138,40 @@ describe('React', () => {
       },
     })
   })
+  test('should be able to replace objects', () => {
+    const { reducers, actions, middleware } = create({
+      state: {
+        foo: {
+          bar: [
+            { title: 'foo', isAwesome: true },
+            { title: 'bar', isAwesome: false },
+          ],
+        },
+      },
+      actions: {
+        test({ state }) {
+          state.foo.bar = state.foo.bar.filter((item) => item.isAwesome)
+        },
+      },
+    })
+    const store = createStore(
+      combineReducers(reducers),
+      applyMiddleware(middleware)
+    )
+
+    store.dispatch(actions.test())
+
+    expect(store.getState()).toEqual({
+      foo: {
+        bar: [
+          {
+            title: 'foo',
+            isAwesome: true,
+          },
+        ],
+      },
+    })
+  })
   test('should handle async changes', async () => {
     const { reducers, actions, middleware } = create({
       state: {

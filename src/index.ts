@@ -126,10 +126,19 @@ export function create<
               }
             }
 
-            return target[prop].call(
-              createTrackMutationsProxy(dispatch, getState, path, objectCache),
-              ...args
-            )
+            if (prop === 'forEach') {
+              return target[prop].call(
+                createTrackMutationsProxy(
+                  dispatch,
+                  getState,
+                  path,
+                  objectCache
+                ),
+                ...args
+              )
+            }
+
+            return target[prop](...args)
           }
         }
 
