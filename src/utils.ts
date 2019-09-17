@@ -52,13 +52,19 @@ export function performMutation(state, path: string[], cb) {
   let currentState = newState
 
   const copyPath = namespacedPath.slice()
+
   while (copyPath.length) {
     const nestedKey = copyPath.shift() as string
     const nestedTarget = currentState[nestedKey]
-    currentState[nestedKey] = Array.isArray(nestedTarget)
-      ? nestedTarget.slice()
-      : { ...nestedTarget }
-    currentState = currentState[nestedKey]
+
+    if (copyPath.length) {
+      currentState[nestedKey] = Array.isArray(nestedTarget)
+        ? nestedTarget.slice()
+        : { ...nestedTarget }
+      currentState = currentState[nestedKey]
+    } else {
+      currentState[nestedKey] = targetCopy
+    }
   }
 
   const freezePath = namespacedPath.slice()

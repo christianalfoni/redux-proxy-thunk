@@ -30,6 +30,8 @@ const arrayMutations = new Set([
   'copyWithin',
 ])
 
+export const IS_PROXY = Symbol('IS_PROXY')
+
 // Creates the store itself by preparing the state, converting actions to callable
 // functions and manage their execution to notify state changes
 export function create<
@@ -53,117 +55,121 @@ export function create<
     path,
     objectCache: WeakMap<object, object>
   ) {
-    return new Proxy(
-      {},
-      {
-        getOwnPropertyDescriptor(_, prop) {
-          const target = getTarget(path, getState())
+    return new Proxy(Array.isArray(getTarget(path, getState())) ? [] : {}, {
+      getOwnPropertyDescriptor(_, prop) {
+        const target = getTarget(path, getState())
 
-          return Reflect.getOwnPropertyDescriptor(target, prop)
-        },
-        ownKeys() {
-          const target = getTarget(path, getState())
+        return Reflect.getOwnPropertyDescriptor(target, prop)
+      },
+      ownKeys() {
+        const target = getTarget(path, getState())
 
-          return Reflect.ownKeys(target)
-        },
-        has(_, prop) {
-          const target = getTarget(path, getState())
+        return Reflect.ownKeys(target)
+      },
+      has(_, prop) {
+        const target = getTarget(path, getState())
 
-          return Reflect.has(target, prop)
-        },
-        get(_, prop) {
-          if (typeof prop === 'symbol') {
-            return prop
-          }
+        return Reflect.has(target, prop)
+      },
+      get(_, prop) {
+        if (prop === IS_PROXY) {
+          return true
+        }
 
-          const target = getTarget(path, getState())
-          const newPath = path.concat(prop)
+        if (typeof prop === 'symbol') {
+          return prop
+        }
 
-          if (typeof target[prop] === 'function') {
-            return (...args) => {
-              if (arrayMutations.has(prop.toString())) {
-                dispatch({
-                  type: 'mutation',
-                  path,
-                  mutation: prop.toString().toUpperCase(),
-                  args,
-                })
-                switch (prop) {
-                  case 'push':
-                  case 'unshift':
-                    return target.length + args.length
-                  case 'shift':
-                    return target[0]
-                  case 'pop':
-                    return target[target.length - 1]
-                  case 'splice':
-                    return Object.freeze(target.slice().splice(...args))
-                  case 'reverse':
-                  case 'sort':
-                  case 'copyWithin':
-                    const newTarget = path.reduce(
-                      (aggr, key) => aggr[key],
-                      getState()
-                    )
+        const target = getTarget(path, getState())
+        const newPath = path.concat(prop)
 
-                    return objectCache
-                      .set(
-                        newTarget,
-                        createTrackMutationsProxy(
-                          dispatch,
-                          getState,
-                          path,
-                          objectCache
-                        )
-                      )
-                      .get(newTarget)
-                  default:
-                    return undefined
-                }
-              }
-
-              return target[prop](...args)
-            }
-          }
-
-          if (typeof target[prop] === 'object' && target[prop] !== null) {
-            return (
-              objectCache.get(target[prop]) ||
-              objectCache
-                .set(
-                  target[prop],
-                  createTrackMutationsProxy(
-                    dispatch,
-                    getState,
-                    newPath,
-                    objectCache
+        if (typeof target[prop] === 'function') {
+          return (...args) => {
+            if (arrayMutations.has(prop.toString())) {
+              dispatch({
+                type: 'mutation',
+                path,
+                mutation: prop.toString().toUpperCase(),
+                args,
+              })
+              switch (prop) {
+                case 'push':
+                case 'unshift':
+                  return target.length + args.length
+                case 'shift':
+                  return target[0]
+                case 'pop':
+                  return target[target.length - 1]
+                case 'splice':
+                  return Object.freeze(target.slice().splice(...args))
+                case 'reverse':
+                case 'sort':
+                case 'copyWithin':
+                  const newTarget = path.reduce(
+                    (aggr, key) => aggr[key],
+                    getState()
                   )
-                )
-                .get(target[prop])
+
+                  return objectCache
+                    .set(
+                      newTarget,
+                      createTrackMutationsProxy(
+                        dispatch,
+                        getState,
+                        path,
+                        objectCache
+                      )
+                    )
+                    .get(newTarget)
+                default:
+                  return undefined
+              }
+            }
+
+            return target[prop].call(
+              createTrackMutationsProxy(dispatch, getState, path, objectCache),
+              ...args
             )
           }
+        }
 
-          return target[prop]
-        },
-        set(_, prop, value) {
-          dispatch({
-            type: 'mutation',
-            path: path.concat(prop),
-            mutation: 'SET',
-            value,
-          })
-          return true
-        },
-        deleteProperty(_, prop) {
-          dispatch({
-            type: 'mutation',
-            path: path.concat(prop),
-            mutation: 'DELETE',
-          })
-          return true
-        },
-      }
-    )
+        if (typeof target[prop] === 'object' && target[prop] !== null) {
+          return (
+            objectCache.get(target[prop]) ||
+            objectCache
+              .set(
+                target[prop],
+                createTrackMutationsProxy(
+                  dispatch,
+                  getState,
+                  newPath,
+                  objectCache
+                )
+              )
+              .get(target[prop])
+          )
+        }
+
+        return target[prop]
+      },
+      set(_, prop, value) {
+        dispatch({
+          type: 'mutation',
+          path: path.concat(prop),
+          mutation: 'SET',
+          value,
+        })
+        return true
+      },
+      deleteProperty(_, prop) {
+        dispatch({
+          type: 'mutation',
+          path: path.concat(prop),
+          mutation: 'DELETE',
+        })
+        return true
+      },
+    })
   }
 
   function createAction(

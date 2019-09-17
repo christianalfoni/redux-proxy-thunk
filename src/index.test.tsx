@@ -1,4 +1,4 @@
-import { create } from './'
+import { create, IS_PROXY } from './'
 import { createStore, applyMiddleware, combineReducers } from 'redux'
 import { Provider, useSelector } from 'react-redux'
 import * as React from 'react'
@@ -104,6 +104,37 @@ describe('React', () => {
     expect(store.getState()).toEqual({
       foo: {
         bar: 'baz!!',
+      },
+    })
+  })
+  test('should be able to mutate with iterators', () => {
+    const { reducers, actions, middleware } = create({
+      state: {
+        foo: {
+          bar: [{ title: 'foo' }],
+        },
+      },
+      actions: {
+        test({ state }) {
+          state.foo.bar.forEach((item) => {
+            item.title += '!!!'
+          })
+        },
+      },
+    })
+    const store = createStore(
+      combineReducers(reducers),
+      applyMiddleware(middleware)
+    )
+
+    store.dispatch(actions.test())
+    expect(store.getState()).toEqual({
+      foo: {
+        bar: [
+          {
+            title: 'foo!!!',
+          },
+        ],
       },
     })
   })
