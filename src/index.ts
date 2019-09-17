@@ -58,7 +58,7 @@ function createTrackMutationsProxy(
         return (...args) => {
           if (arrayMutationMethods.has(prop.toString())) {
             dispatch({
-              type: 'mutation:' + name,
+              type: 'action:' + actionName,
               path: path.join('.'),
               mutation: prop.toString().toUpperCase(),
               args,
@@ -89,7 +89,7 @@ function createTrackMutationsProxy(
                       getState,
                       path,
                       objectCache,
-                      name
+                      actionName
                     )
                   )
                   .get(newTarget)
@@ -108,7 +108,7 @@ function createTrackMutationsProxy(
               getState,
               path,
               objectCache,
-              name
+              actionName
             ),
             ...args
           )
@@ -126,7 +126,7 @@ function createTrackMutationsProxy(
                 getState,
                 newPath,
                 objectCache,
-                name
+                actionName
               )
             )
             .get(target[prop])
@@ -137,7 +137,7 @@ function createTrackMutationsProxy(
     },
     set(_, prop, value) {
       dispatch({
-        type: 'mutation:' + name,
+        type: 'action:' + actionName,
         path: path.concat(prop).join('.'),
         mutation: 'SET',
         value,
@@ -146,7 +146,7 @@ function createTrackMutationsProxy(
     },
     deleteProperty(_, prop) {
       dispatch({
-        type: 'mutation:' + name,
+        type: 'action:' + actionName,
         path: path.concat(prop).join('.'),
         mutation: 'DELETE',
       })
@@ -165,7 +165,7 @@ export function createReducer() {
   const initialState = arguments.length > 1 ? arguments[1] : arguments[0]
 
   return (state, action) => {
-    if (action.type.startsWith('mutation:')) {
+    if (action.type.startsWith('action:')) {
       const path = action.path.split('.')
 
       if (namespace && path[0] !== namespace) {
